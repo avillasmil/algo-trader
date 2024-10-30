@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "algo-trader"
+version = "0.1.0"
+description = ""
+authors = ["Alejandro Villasmil <villasmil.alejandro7@gmail.com>"]
+packages = [{include = "algo_trader"}]
+
+
+[tool.poetry.dependencies]
+python = "^3.9.0"
+pandas = "^2.2.3"
+scikit-learn = "^1.5.2"
+torch = "^2.5.1"
+matplotlib = "^3.9.2"
+seaborn = "^0.13.2"
+alpaca-py = "^0.31.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
