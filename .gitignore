@@ -1,3 +1,4 @@
 .DS_Store
 .ipynb_checkpoints
 algo-trader/__pycache__
+credentials.json
