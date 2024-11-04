@@ -1,0 +1,19 @@
+{
+    "model_to_use": "xgb",
+    "model_params": {
+        "eval_metric": "mlogloss",
+        "n_estimators": 100
+    },
+    "label_weights": true,
+    "train_start_end": ["2021-03-01", "2023-03-01"],
+    "backtest_start_end": ["2023-05-01", "2024-05-01"],
+    "period": 5,
+    "validation_split": 0.2,
+    "train_symbols": ["META", "AAPL", "MSFT", "AMZN", "GOOG"],
+    "backtest_symbols": ["AAPL", "MSFT"],
+    "initial_cash": 10000,
+    "allocations": {
+        "AAPL": 0.5,
+        "MSFT": 0.5
+    }
+}
