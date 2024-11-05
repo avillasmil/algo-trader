@@ -131,5 +131,17 @@ def generate_labels(df):
         index=labels_rsi.index
     )
     return labels_final
+
+def generate_label_summary(train_data, val_data):
+    n_buy = (train_data['label'] == 1).sum()
+    n_sell = (train_data['label'] == 2).sum()
+    print(f"{n_buy} total train buy labels ({n_buy/len(train_data):.6f}%)") 
+    print(f"{n_sell} total train sell labels ({n_sell/len(train_data):.6f}%)")
+
+    n_buy = (val_data['label'] == 1).sum()
+    n_sell = (val_data['label'] == 2).sum()
+    print(f"{n_buy} total val buy labels ({n_buy/len(train_data):.6f}%)") 
+    print(f"{n_sell} total val sell labels ({n_sell/len(train_data):.6f}%)")
+
     
     

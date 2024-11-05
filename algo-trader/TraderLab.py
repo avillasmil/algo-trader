@@ -13,8 +13,11 @@ from preprocess import (
     calculate_rsi,
     calculate_obv,
     calculate_macd,
-    generate_labels
+    generate_labels,
+    generate_label_summary
 )
+from train import split_features_and_labels
+from xgboost import XGBClassifier
 
 
 class TraderLab:
@@ -69,6 +72,7 @@ class TraderLab:
         4. Drops any NaN values resulting from indicator calculations.
 
         """
+        print("Preprocessing Data...")
         # Calculate indicators and generate labels for each dataset (train and validation)
         for data in (self.train_data, self.val_data):
             for symbol in self.train_symbols:
@@ -95,9 +99,28 @@ class TraderLab:
         self.train_data = pd.concat(self.train_data.values(), ignore_index=True).dropna()
         self.val_data = pd.concat(self.val_data.values(), ignore_index=True).dropna()
 
+        # Label Overview
+        generate_label_summary(self.train_data, self.val_data)
+        
 
     def train(self):
-        pass
+        if self.model_to_use == "xgb":
+            model = XGBClassifier()
+
+        model.set_params(**self.model_params)
+
+        X_train, y_train = split_features_and_labels(self.train_data)
+        X_test, y_test = split_features_and_labels(self.val_data)
+
+        if self.label_weights_flag:
+            class_weights = y_train.value_counts(normalize=True)  # Get class distribution
+            total_samples = len(y_train)
+            scale_pos_weight = total_samples / (len(class_weights) * class_weights)
+
+        model.fit(X_train, y_train, sample_weight=y_train.map(scale_pos_weight))
+
+        self.model = model
+
 
     def evaluate(self):
         pass
