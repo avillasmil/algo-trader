@@ -134,4 +134,29 @@ def run_simulation(historical_data, symbols, model, portfolio, initial_cash):
     return portfolio
 
 
+def calculate_baseline_return(symbols, cash_allocation, historical_data):
+    """
+    Calculate the baseline return based on the provided symbols, cash allocation,
+    and historical data. Hold only return.
+
+    Args:
+        symbols (list): A list of stock symbols to consider.
+        cash_allocation (dict): A dictionary mapping each symbol to its cash allocation.
+        historical_data (dict): A dictionary containing historical price data for each symbol.
+        
+    """
+    return_BL = 0  # Initialize baseline return
+
+    # Iterate over each symbol to calculate its contribution to the baseline return
+    for symbol in symbols:
+        alloc = cash_allocation[symbol]  # Get the cash allocation for the symbol
+        # Calculate the baseline return for the symbol
+        bl = ((historical_data[symbol]["close"].iloc[-1] - historical_data[symbol]["close"].iloc[0]) /
+              historical_data[symbol]["close"].iloc[0]) * 100
+        
+        # Accumulate the weighted baseline return
+        return_BL += alloc * bl
+
+    return return_BL  # Return the total baseline return
+
     

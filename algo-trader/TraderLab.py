@@ -18,7 +18,7 @@ from preprocess import (
     generate_labels,
     generate_label_summary
 )
-from backtest import generate_BT_features, preprocess_BT_data, run_simulation
+from backtest import generate_BT_features, preprocess_BT_data, run_simulation, calculate_baseline_return
 from train import split_features_and_labels, get_model_filename, get_sample_weights
 from xgboost import XGBClassifier
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, classification_report
@@ -223,7 +223,10 @@ class TraderLab:
 
         # Run the trading simulation, updating portfolio based on model predictions
         portfolio = run_simulation(self.backtest_data, self.backtest_symbols, self.model, portfolio, self.initial_cash)
-        
+
+        # Compare to baseline return - hold only
+        bl_return = calculate_baseline_return(self.backtest_symbols, self.self.allocations, self.backtest_data)
+        print(f"Baseline Return (HOLD ONLY)= {return_BL:.2f}%")
 
 
 if __name__ == "__main__":
