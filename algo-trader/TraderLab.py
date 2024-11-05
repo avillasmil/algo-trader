@@ -225,8 +225,8 @@ class TraderLab:
         portfolio = run_simulation(self.backtest_data, self.backtest_symbols, self.model, portfolio, self.initial_cash)
 
         # Compare to baseline return - hold only
-        bl_return = calculate_baseline_return(self.backtest_symbols, self.self.allocations, self.backtest_data)
-        print(f"Baseline Return (HOLD ONLY)= {return_BL:.2f}%")
+        bl_return = calculate_baseline_return(self.backtest_symbols, self.allocations, self.backtest_data)
+        print(f"Baseline Return (HOLD ONLY)= {bl_return:.2f}%")
 
 
 if __name__ == "__main__":
