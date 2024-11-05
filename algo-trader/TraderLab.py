@@ -6,7 +6,7 @@ from alpaca.data.historical.stock import StockHistoricalDataClient
 import pandas as pd
 import multiprocessing as mp
 from functools import partial
-from data_fetch import get_paper_creds, fetch_symbol_data
+from data_fetch import get_paper_creds, fetch_symbol_data, fetch_symbol_data_BT
 from preprocess import (
     train_test_split,
     calculate_bollinger_bands,
@@ -18,6 +18,7 @@ from preprocess import (
     generate_labels,
     generate_label_summary
 )
+from backtest import generate_BT_features, preprocess_BT_data, run_simulation
 from train import split_features_and_labels, get_model_filename, get_sample_weights
 from xgboost import XGBClassifier
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, classification_report
@@ -35,6 +36,10 @@ class TraderLab:
         for key, value in config.items():
             setattr(self, key, value)
 
+        # Retrieve API credentials and initialize the stock data client
+        api_key, secret_key = get_paper_creds()
+        self.stock_historical_data_client = StockHistoricalDataClient(api_key, secret_key)
+
 
     def fetch_data(self) -> None:
         """
@@ -42,17 +47,13 @@ class TraderLab:
         """
         print("Pulling Training Data:")
         
-        # Retrieve API credentials and initialize the stock data client
-        api_key, secret_key = get_paper_creds()
-        stock_historical_data_client = StockHistoricalDataClient(api_key, secret_key)
-        
         # Prepare partial function to pass additional parameters to `fetch_symbol_data`
         fetch_func = partial(
             fetch_symbol_data,
             period=self.period,
             train_start_end=self.train_start_end,
             validation_split=self.validation_split,
-            stock_historical_data_client=stock_historical_data_client
+            stock_historical_data_client=self.stock_historical_data_client
         )
         
         # Use multiprocessing pool to fetch data in parallel
@@ -62,6 +63,7 @@ class TraderLab:
         # Collect results into dictionaries
         self.train_data = {symbol: train_data for symbol, train_data, _ in results}
         self.val_data = {symbol: val_data for symbol, _, val_data in results}
+        print("--------------------------------------------------------------------------")
 
 
     def preprocess_data(self) -> None:
@@ -106,6 +108,8 @@ class TraderLab:
 
         # Label Overview
         generate_label_summary(self.train_data, self.val_data)
+        print("--------------------------------------------------------------------------")
+
         
 
     def train(self) -> None:
@@ -145,6 +149,7 @@ class TraderLab:
         with open(path, 'wb') as file:
             pickle.dump(model, file)
         print(f"Training Complete. Model saved: {path}")
+        print("--------------------------------------------------------------------------")
 
 
     def evaluate(self) -> None:
@@ -174,10 +179,52 @@ class TraderLab:
         class_report = classification_report(y_test, y_preds)
         print("\nClassification Report:")
         print(class_report)
+        print("--------------------------------------------------------------------------")
 
 
     def backtest(self):
-        pass
+        """
+        Conducts a backtest simulation for specified stock symbols by fetching historical data, 
+        generating features, preprocessing data, and running a simulation to assess portfolio performance.
+
+        Steps:
+        1. Fetch historical data in parallel for each symbol.
+        2. Generate and preprocess technical indicators/features.
+        3. Initialize portfolio with cash allocations and zeroed positions.
+        4. Run a trading simulation based on model predictions, tracking daily portfolio values.
+
+        """
+        
+        # Prepare a partial function to pass additional arguments to `fetch_symbol_data_BT`
+        fetch_func = partial(
+            fetch_symbol_data_BT,
+            period=self.period,
+            backtest_start_end=self.backtest_start_end,
+            stock_historical_data_client=self.stock_historical_data_client
+        )
+
+        # Fetch historical data in parallel using multiprocessing
+        with mp.Pool(processes=mp.cpu_count()) as pool:
+            results = pool.map(fetch_func, self.backtest_symbols)
+        
+        # Compile fetched data into a dictionary keyed by symbol
+        self.backtest_data = {symbol: df for symbol, df in results}
+        
+        # Generate and preprocess features for each symbol's data
+        self.backtest_data = generate_BT_features(self.backtest_data, self.backtest_symbols)
+        self.backtest_data = preprocess_BT_data(self.backtest_data)
+
+        # Initialize portfolio with specified cash allocations and empty positions
+        portfolio = {
+            'cash': {symbol: self.initial_cash * self.allocations[symbol] for symbol in self.backtest_symbols},
+            'positions': {symbol: {'shares': 0, 'value': 0} for symbol in self.backtest_symbols},
+            'history': []  # To record daily portfolio values over the backtesting period
+        }
+
+        # Run the trading simulation, updating portfolio based on model predictions
+        portfolio = run_simulation(self.backtest_data, self.backtest_symbols, self.model, portfolio, self.initial_cash)
+        
+
 
 if __name__ == "__main__":
     pass
