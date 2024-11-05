@@ -9,6 +9,7 @@
     "train_start_end": ["2021-03-01", "2023-03-01"],
     "backtest_start_end": ["2023-05-01", "2024-05-01"],
     "period": 5,
+    "lookahead_periods": 2,
     "validation_split": 0.2,
     "train_symbols": ["META", "AAPL", "MSFT", "AMZN", "GOOG"],
     "backtest_symbols": ["AAPL", "MSFT"],

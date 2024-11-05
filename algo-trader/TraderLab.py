@@ -1,4 +1,5 @@
 import json
+import pickle
 from datetime import datetime, timedelta
 from alpaca.data.historical.stock import StockHistoricalDataClient
 import pandas as pd
@@ -16,7 +17,7 @@ from preprocess import (
     generate_labels,
     generate_label_summary
 )
-from train import split_features_and_labels
+from train import split_features_and_labels, get_model_filename
 from xgboost import XGBClassifier
 
 
@@ -28,8 +29,10 @@ class TraderLab:
             config = json.load(file)
 
         # Set attributes
+        self.config = config
         for key, value in config.items():
             setattr(self, key, value)
+
 
     def fetch_data(self) -> None:
         """
@@ -89,7 +92,7 @@ class TraderLab:
                 symbol_data = pd.concat([symbol_data, macd_df], axis=1)
                 
                 # Generate and assign labels
-                labels_df = symbol_data.shift(periods=-2)
+                labels_df = symbol_data.shift(periods=-self.lookahead_periods)
                 symbol_data['label'] = generate_labels(labels_df)
                 
                 # Update the dictionary with the processed data
@@ -104,22 +107,42 @@ class TraderLab:
         
 
     def train(self):
+        """
+        Trains a specified machine learning model (currently supports XGBoost) with parameters 
+        defined in `self.model_params`. The function applies class weighting if `self.label_weights_flag` 
+        is set, splits data into features and labels, and then fits the model. After training, 
+        it saves the trained model to a unique file using a configuration-based naming convention.
+        
+        """
+        # Initialize the model based on selection
         if self.model_to_use == "xgb":
-            model = XGBClassifier()
+            model = XGBClassifier(random_state=42)
+        else:
+            raise ValueError(f"Unsupported model: {self.model_to_use}")
 
+        # Set model parameters from `self.model_params`
         model.set_params(**self.model_params)
 
+        # Split train and validation data into features and labels
         X_train, y_train = split_features_and_labels(self.train_data)
         X_test, y_test = split_features_and_labels(self.val_data)
 
+        # Calculate class weights if specified
+        sample_weight = None
         if self.label_weights_flag:
-            class_weights = y_train.value_counts(normalize=True)  # Get class distribution
+            class_weights = y_train.value_counts(normalize=True)  # Class distribution
             total_samples = len(y_train)
             scale_pos_weight = total_samples / (len(class_weights) * class_weights)
+            sample_weight = y_train.map(scale_pos_weight)
 
-        model.fit(X_train, y_train, sample_weight=y_train.map(scale_pos_weight))
-
+        # Fit the model, using sample weights if they are calculated
+        model.fit(X_train, y_train, sample_weight=sample_weight)
         self.model = model
+
+        # Serialize and save the model with a unique filename
+        path = get_model_filename(self.config)
+        with open(path, 'wb') as file:
+            pickle.dump(model, file)
 
 
     def evaluate(self):
