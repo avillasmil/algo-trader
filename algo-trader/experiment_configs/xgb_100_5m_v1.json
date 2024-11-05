@@ -4,6 +4,7 @@
         "eval_metric": "mlogloss",
         "n_estimators": 100
     },
+    "feat_win_length": 24,
     "label_weights": true,
     "train_start_end": ["2021-03-01", "2023-03-01"],
     "backtest_start_end": ["2023-05-01", "2024-05-01"],

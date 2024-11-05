@@ -1,11 +1,21 @@
 import json
 from datetime import datetime, timedelta
-from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
 from alpaca.data.historical.stock import StockHistoricalDataClient
-from alpaca.data.requests import StockBarsRequest
 import pandas as pd
-from data_fetch import get_paper_creds
-from preprocess import train_test_split
+import multiprocessing as mp
+from functools import partial
+from data_fetch import get_paper_creds, fetch_symbol_data
+from preprocess import (
+    train_test_split,
+    calculate_bollinger_bands,
+    calculate_sma,
+    calculate_ema,
+    calculate_rsi,
+    calculate_obv,
+    calculate_macd,
+    generate_labels
+)
+
 
 class TraderLab:
 
@@ -20,57 +30,71 @@ class TraderLab:
 
     def fetch_data(self) -> None:
         """
-        Fetches historical stock data for training and validation.
-
-        This function pulls stock price and volume data for a list of symbols specified 
-        in `train_symbols` config key. The data within is sampled with a period specified
-        in the 'period' config key (in minutes)and a date range defined by `train_start_end`. 
-        The retrieved data is then split into training and validation sets based on 
-        `validation_split` and saved to `train_data` and `val_data` attributes.
-
-        Parameters:
-        None
-
-        Returns:
-        None
+        Parallel fetch of training and validation data for multiple stock symbols.
         """
         print("Pulling Training Data:")
         
-        # Retrieve API credentials
+        # Retrieve API credentials and initialize the stock data client
         api_key, secret_key = get_paper_creds()
-        
-        # Initialize the client for fetching historical stock data
         stock_historical_data_client = StockHistoricalDataClient(api_key, secret_key)
         
-        # Initialize dictionaries to store training and validation data for each symbol
-        train_dict = {}
-        val_dict = {}
+        # Prepare partial function to pass additional parameters to `fetch_symbol_data`
+        fetch_func = partial(
+            fetch_symbol_data,
+            period=self.period,
+            train_start_end=self.train_start_end,
+            validation_split=self.validation_split,
+            stock_historical_data_client=stock_historical_data_client
+        )
         
-        # Fetch data for each symbol in the training set
-        for symbol in self.train_symbols:
-            print(f"Fetching {symbol} data...")
-            
-            # Create request for stock bars with specified symbol, timeframe, and date range
-            req = StockBarsRequest(
-                symbol_or_symbols=[symbol],
-                timeframe=TimeFrame(amount=self.period, unit=TimeFrameUnit.Minute),
-                start=self.train_start_end[0],
-                end=self.train_start_end[1]
-            )
-            
-            # Retrieve data and select only 'close' and 'volume' columns
-            df = stock_historical_data_client.get_stock_bars(req).df.loc[:, ["close", "volume"]]
-            
-            # Split data into training and validation sets
-            train_dict[symbol], val_dict[symbol] = train_test_split(df, self.validation_split)
+        # Use multiprocessing pool to fetch data in parallel
+        with mp.Pool(processes=mp.cpu_count()) as pool:
+            results = pool.map(fetch_func, self.train_symbols)
         
-        # Store the split data into instance attributes
-        self.train_data = train_dict
-        self.val_data = val_dict
+        # Collect results into dictionaries
+        self.train_data = {symbol: train_data for symbol, train_data, _ in results}
+        self.val_data = {symbol: val_data for symbol, _, val_data in results}
 
 
-    def preprocess_data(self):
-        pass
+    def preprocess_data(self) -> None:
+        """
+        Preprocesses training and validation data by calculating technical indicators 
+        (Bollinger Bands, SMA, RSI, OBV, EMA, MACD) for each stock symbol, and generates 
+        labels based on shifted data.
+
+        This method:
+        1. Calculates specified indicators and adds them as new columns.
+        2. Generates target labels for each symbol. (0 = No Action, 1 = Buy, 2 = Sell)
+        3. Combines all symbols' dataframes into a single training and validation dataframe.
+        4. Drops any NaN values resulting from indicator calculations.
+
+        """
+        # Calculate indicators and generate labels for each dataset (train and validation)
+        for data in (self.train_data, self.val_data):
+            for symbol in self.train_symbols:
+                # Access the symbol data and compute indicators
+                symbol_data = data[symbol]
+                symbol_data['bb'] = calculate_bollinger_bands(symbol_data['close'], window=self.feat_win_length)
+                symbol_data['sma'] = calculate_sma(symbol_data['close'], window=self.feat_win_length)
+                symbol_data['rsi'] = calculate_rsi(symbol_data['close'], window=self.feat_win_length)
+                symbol_data['obv'] = calculate_obv(symbol_data)
+                symbol_data['ema'] = calculate_ema(symbol_data['close'], window=self.feat_win_length)
+                
+                # Calculate MACD and concatenate
+                macd_df = calculate_macd(symbol_data['close'])
+                symbol_data = pd.concat([symbol_data, macd_df], axis=1)
+                
+                # Generate and assign labels
+                labels_df = symbol_data.shift(periods=-2)
+                symbol_data['label'] = generate_labels(labels_df)
+                
+                # Update the dictionary with the processed data
+                data[symbol] = symbol_data
+
+        # Concatenate all symbols' data for train and validation sets, respectively
+        self.train_data = pd.concat(self.train_data.values(), ignore_index=True).dropna()
+        self.val_data = pd.concat(self.val_data.values(), ignore_index=True).dropna()
+
 
     def train(self):
         pass
