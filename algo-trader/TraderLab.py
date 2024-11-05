@@ -1,5 +1,6 @@
 import json
 import pickle
+import os
 from datetime import datetime, timedelta
 from alpaca.data.historical.stock import StockHistoricalDataClient
 import pandas as pd
@@ -17,8 +18,9 @@ from preprocess import (
     generate_labels,
     generate_label_summary
 )
-from train import split_features_and_labels, get_model_filename
+from train import split_features_and_labels, get_model_filename, get_sample_weights
 from xgboost import XGBClassifier
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, classification_report
 
 
 class TraderLab:
@@ -75,7 +77,7 @@ class TraderLab:
         4. Drops any NaN values resulting from indicator calculations.
 
         """
-        print("Preprocessing Data...")
+        print("Preprocessing Data:")
         # Calculate indicators and generate labels for each dataset (train and validation)
         for data in (self.train_data, self.val_data):
             for symbol in self.train_symbols:
@@ -106,14 +108,15 @@ class TraderLab:
         generate_label_summary(self.train_data, self.val_data)
         
 
-    def train(self):
+    def train(self) -> None:
         """
         Trains a specified machine learning model (currently supports XGBoost) with parameters 
         defined in `self.model_params`. The function applies class weighting if `self.label_weights_flag` 
         is set, splits data into features and labels, and then fits the model. After training, 
         it saves the trained model to a unique file using a configuration-based naming convention.
-        
+
         """
+        print("Training Model:")
         # Initialize the model based on selection
         if self.model_to_use == "xgb":
             model = XGBClassifier(random_state=42)
@@ -123,17 +126,13 @@ class TraderLab:
         # Set model parameters from `self.model_params`
         model.set_params(**self.model_params)
 
-        # Split train and validation data into features and labels
+        # Split train data into features and labels
         X_train, y_train = split_features_and_labels(self.train_data)
-        X_test, y_test = split_features_and_labels(self.val_data)
 
         # Calculate class weights if specified
         sample_weight = None
         if self.label_weights_flag:
-            class_weights = y_train.value_counts(normalize=True)  # Class distribution
-            total_samples = len(y_train)
-            scale_pos_weight = total_samples / (len(class_weights) * class_weights)
-            sample_weight = y_train.map(scale_pos_weight)
+            sample_weight = get_sample_weights(y_train)
 
         # Fit the model, using sample weights if they are calculated
         model.fit(X_train, y_train, sample_weight=sample_weight)
@@ -141,12 +140,41 @@ class TraderLab:
 
         # Serialize and save the model with a unique filename
         path = get_model_filename(self.config)
+        # Create the parent directory if it doesn't exist
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, 'wb') as file:
             pickle.dump(model, file)
+        print(f"Training Complete. Model saved: {path}")
 
 
-    def evaluate(self):
-        pass
+    def evaluate(self) -> None:
+        print("Model Evaluation on Validation Set:")
+        X_test, y_test = split_features_and_labels(self.val_data)
+        y_preds = self.model.predict(X_test)
+
+        # Calculate accuracy
+        accuracy = accuracy_score(y_test, y_preds)
+        print(f"Accuracy: {accuracy:.2f}")
+
+        # Calculate precision, recall, and F1 score (averaging by 'macro', 'micro', or 'weighted')
+        precision = precision_score(y_test, y_preds, average='weighted')
+        recall = recall_score(y_test, y_preds, average='weighted')
+        f1 = f1_score(y_test, y_preds, average='weighted')
+
+        print(f"Precision: {precision:.2f}")
+        print(f"Recall: {recall:.2f}")
+        print(f"F1 Score: {f1:.2f}")
+
+        # Confusion Matrix
+        conf_matrix = confusion_matrix(y_test, y_preds)
+        print("\nConfusion Matrix:")
+        print(conf_matrix)
+
+        # Classification Report
+        class_report = classification_report(y_test, y_preds)
+        print("\nClassification Report:")
+        print(class_report)
+
 
     def backtest(self):
         pass

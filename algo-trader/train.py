@@ -19,3 +19,10 @@ def get_model_filename(config: dict, base_path="models/") -> str:
     # Create filename with a readable part and the hash
     filename = f"{base_path}model_{config['model_to_use']}_{config_hash[:8]}.pkl"
     return filename
+
+def get_sample_weights(y_train):
+    class_weights = y_train.value_counts(normalize=True)  # Class distribution
+    total_samples = len(y_train)
+    scale_pos_weight = total_samples / (len(class_weights) * class_weights)
+    sample_weight = y_train.map(scale_pos_weight)
+    return sample_weight
