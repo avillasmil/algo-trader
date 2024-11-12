@@ -28,8 +28,8 @@ logger = logging.getLogger(__name__)
 API_KEY, SECRET_KEY = get_paper_creds()
 BASE_URL = 'https://paper-api.alpaca.markets'
 
-# Symbols to subscribe to
-symbols = ["MSFT", "AAPL", "GOOG"]
+symbols = ["MSFT", "AAPL", "GOOG"] # Symbols to subscribe to
+model_name = "model_xgb_e67d3402" # Trading model to use
 
 # Initialize WebSocket client
 wss_client = StockDataStream(API_KEY, SECRET_KEY)
@@ -37,13 +37,9 @@ wss_client = StockDataStream(API_KEY, SECRET_KEY)
 # Variables for 5-minute look-ahead aggregation
 interval = timedelta(minutes=5)
 
-# Load trained classifier model (assuming the model is already trained and saved)
-with open("models/model_xgb_e67d3402.pkl", "rb") as f:
-    classifier = pickle.load(f)
-
 # Create SymbolProcessor instances for each symbol
 buffer_size = 3 # CHANGE TO 26 FOR FINAL IMPLEMENTATION
-symbol_processors = {symbol: SymbolProcessor(symbol, buffer_size) for symbol in symbols}
+symbol_processors = {symbol: SymbolProcessor(symbol, model_name, buffer_size) for symbol in symbols}
 
 # Async handler for incoming 1-minute bar data
 async def bar_data_handler(bar):
