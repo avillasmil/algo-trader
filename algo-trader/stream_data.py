@@ -30,6 +30,8 @@ BASE_URL = 'https://paper-api.alpaca.markets'
 
 symbols = ["MSFT", "AAPL", "GOOG"] # Symbols to subscribe to
 model_name = "model_xgb_e67d3402" # Trading model to use
+allocation_percentage = 1/len(symbols) # Allocation percentage per symbol(uniform)
+starting_cash = 10000
 
 # Initialize WebSocket client
 wss_client = StockDataStream(API_KEY, SECRET_KEY)
@@ -39,7 +41,7 @@ interval = timedelta(minutes=5)
 
 # Create SymbolProcessor instances for each symbol
 buffer_size = 3 # CHANGE TO 26 FOR FINAL IMPLEMENTATION
-symbol_processors = {symbol: SymbolProcessor(symbol, model_name, buffer_size) for symbol in symbols}
+symbol_processors = {symbol: SymbolProcessor(symbol, model_name, wss_client, allocation_percentage, starting_cash, buffer_size) for symbol in symbols}
 
 # Async handler for incoming 1-minute bar data
 async def bar_data_handler(bar):
