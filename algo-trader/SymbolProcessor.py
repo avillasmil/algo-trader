@@ -3,28 +3,54 @@ import pickle
 import logging
 import pandas as pd
 from collections import deque
+from datetime import datetime, timedelta
 from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import MarketOrderRequest
 from alpaca.trading.enums import OrderSide, TimeInForce
 
 class SymbolProcessor:
-    def __init__(self, symbol, model_name, alpaca_client, allocation_percentage, starting_cash, buffer_size=26):
+    def __init__(self, symbol, model_name, alpaca_client, allocation_percentage, starting_cash, logger, buffer_size=26):
         self.symbol = symbol
+        self.interval = timedelta(minutes=5)
+        self.logger = logger
         self.buffer_size = buffer_size
         self.next_aggregation_time = None
         self.interval_data = []
         self.rolling_window = deque(maxlen=buffer_size)
         self.obv_value = 0
+        self.aggregated_data = []
         self.alpaca_client = alpaca_client  # Alpaca trading client
 
-        # Initial funds allocation
+        # Initialize cash and position allocation
         self.allocation_percentage = allocation_percentage
-        self.cash_available = starting_cash * allocation_percentage  # Initial cash allocated to this symbol
+        self.starting_cash = starting_cash
+        self.cash_available = self.starting_cash * self.allocation_percentage  # Initial cash allocated for this symbol
         self.current_position = 0.0  # Fractional shares held
 
         # Load trained classifier model
         with open(f"models/{model_name}.pkl", "rb") as f:
             self.classifier = pickle.load(f)
+
+        # Initialize holdings based on current Alpaca account
+        self.initialize_holdings()
+
+    def initialize_holdings(self):
+        """Check current holdings for the symbol and initialize position and cash accordingly."""
+        try:
+            # Check if we have a position for the current symbol
+            position = self.alpaca_client.get_position(self.symbol)
+            if position:
+                # Set current position based on held shares and set cash to 0 for this symbol
+                self.current_position = float(position.qty)
+                self.cash_available = 0.0
+                self.logger.info(f"Initialized position for {self.symbol}: {self.current_position} shares held.")
+            else:
+                # No current position, cash is fully available for this symbol
+                self.logger.info(f"No current holdings for {self.symbol}. Cash available: ${self.cash_available}")
+        except Exception as e:
+            # If no position exists, Alpaca raises an error; we interpret it as no holdings
+            self.logger.info(f"No holdings found for {self.symbol}. Exception: {e}")
+            self.current_position = 0.0
 
     def initialize_aggregation_time(self, current_time):
         self.next_aggregation_time = current_time.replace(second=0, microsecond=0)
@@ -39,7 +65,7 @@ class SymbolProcessor:
             self.initialize_aggregation_time(current_time)
 
         # Check if current time has reached the 5-minute interval
-        if current_time >= self.next_aggregation_time + interval:
+        if current_time >= self.next_aggregation_time + self.interval:
             if self.interval_data:
                 # Aggregate close price and volume
                 close_price = self.interval_data[-1].close
@@ -58,6 +84,7 @@ class SymbolProcessor:
                 new_row["obv"] = self.obv_value
                 
                 self.rolling_window.append(new_row)
+                self.aggregated_data.append(new_row)
 
                 rolling_window_df = pd.DataFrame(list(self.rolling_window))
                 # Calculate technical indicators
@@ -84,7 +111,7 @@ class SymbolProcessor:
 
             # Clear interval data and update aggregation time
             self.interval_data = []
-            self.next_aggregation_time += interval
+            self.next_aggregation_time += self.interval
 
     async def execute_trade(self, prediction, close_price):
         """Execute buy or sell based on the classifier's prediction."""
@@ -114,3 +141,8 @@ class SymbolProcessor:
             time_in_force=TimeInForce.DAY
         )
         self.alpaca_client.submit_order(order)
+
+    def save_to_csv(self):
+        df = pd.DataFrame(self.aggregated_data)
+        df.to_csv(f"{self.symbol}_5_minute_lookahead_data.csv", index=False)
+        logger.info(f"Data for {self.symbol} saved to '{self.symbol}_5_minute_lookahead_data.csv'.")
