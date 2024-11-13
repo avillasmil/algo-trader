@@ -27,13 +27,13 @@ class SymbolProcessor:
         self.rolling_window = deque(maxlen=buffer_size)
         self.obv_value = 0
         self.aggregated_data = []
-        self.alpaca_client = alpaca_client  # Alpaca trading client
+        self.alpaca_client = alpaca_client
 
         # Initialize cash and position allocation
         self.allocation_percentage = allocation_percentage
         self.starting_cash = starting_cash
-        self.cash_available = self.starting_cash * self.allocation_percentage  # Initial cash allocated for this symbol
-        self.current_position = 0.0  # Fractional shares held
+        self.cash_available = self.starting_cash * self.allocation_percentage
+        self.current_position = 0.0
 
         # Load trained classifier model
         with open(f"models/{model_name}.pkl", "rb") as f:
@@ -45,18 +45,16 @@ class SymbolProcessor:
     def initialize_holdings(self):
         """Check current holdings for the symbol and initialize position and cash accordingly."""
         try:
-            # Check if we have a position for the current symbol
+            # Get account details and check if there are holdings for this symbol
             position = self.alpaca_client.get_position(self.symbol)
             if position:
-                # Set current position based on held shares and set cash to 0 for this symbol
                 self.current_position = float(position.qty)
                 self.cash_available = 0.0
                 self.logger.info(f"Initialized position for {self.symbol}: {self.current_position} shares held.")
             else:
-                # No current position, cash is fully available for this symbol
                 self.logger.info(f"No current holdings for {self.symbol}. Cash available: ${self.cash_available}")
         except Exception as e:
-            # If no position exists, Alpaca raises an error; we interpret it as no holdings
+            # Interpret exception as no holdings if symbol not found in account
             self.logger.info(f"No holdings found for {self.symbol}. Exception: {e}")
             self.current_position = 0.0
 
@@ -68,20 +66,16 @@ class SymbolProcessor:
     async def process_bar(self, bar, current_time):
         self.interval_data.append(bar)
 
-        # Initialize aggregation time if not already set
         if self.next_aggregation_time is None:
             self.initialize_aggregation_time(current_time)
 
-        # Check if current time has reached the 5-minute interval
         if current_time >= self.next_aggregation_time + self.interval:
             if self.interval_data:
-                # Aggregate close price and volume
                 close_price = self.interval_data[-1].close
                 total_volume = sum(item.volume for item in self.interval_data)
 
                 new_row = {"timestamp": self.next_aggregation_time, "close": close_price, "volume": total_volume}
                 
-                # Update OBV only based on the latest close and volume values
                 if len(self.rolling_window) > 0:
                     last_close = self.rolling_window[-1]["close"]
                     if close_price > last_close:
@@ -90,12 +84,10 @@ class SymbolProcessor:
                         self.obv_value -= total_volume
 
                 new_row["obv"] = self.obv_value
-                
                 self.rolling_window.append(new_row)
                 self.aggregated_data.append(new_row)
 
                 rolling_window_df = pd.DataFrame(list(self.rolling_window))
-                # Calculate technical indicators
                 if len(self.rolling_window) == self.buffer_size:
                     rolling_window_df["bb"] = calculate_bollinger_bands(rolling_window_df["close"])
                     rolling_window_df["rsi"] = calculate_rsi(rolling_window_df["close"])
@@ -104,47 +96,40 @@ class SymbolProcessor:
                     macd_df = calculate_macd(rolling_window_df["close"])
                     rolling_window_df = pd.concat([rolling_window_df, macd_df], axis=1)
 
-                    # Extract the last row as feature input for classifier
                     feature_row = rolling_window_df.iloc[-1][["close", "volume", "bb", "rsi", "sma", "ema", "obv", "MACD", "Signal", "Histogram"]]
-                    features = feature_row.values.reshape(1, -1)  # Reshape for a single prediction
+                    features = feature_row.values.reshape(1, -1)
 
-                    # Generate prediction
                     prediction = self.classifier.predict(features)
-                    logger.info(f"Prediction for {self.symbol}: {prediction[0]}")
+                    self.logger.info(f"Prediction for {self.symbol}: {prediction[0]}")
                     
-                    # Execute trade based on prediction
                     await self.execute_trade(prediction[0], close_price)
 
-                logger.info(f"{self.symbol} rolling window:\n{rolling_window_df.tail(3)}")
+                self.logger.info(f"{self.symbol} rolling window:\n{rolling_window_df.tail(3)}")
 
-            # Clear interval data and update aggregation time
             self.interval_data = []
             self.next_aggregation_time += self.interval
 
     async def execute_trade(self, prediction, close_price):
-        """Execute buy or sell based on the classifier's prediction."""
-        if prediction == 1:  # Buy action
-            if self.cash_available > 0:  # Check if funds are sufficient
-                # Calculate the fraction of a share to buy with the available cash
+        if prediction == 1:
+            if self.cash_available > 0:
                 quantity_to_buy = self.cash_available / close_price
                 if quantity_to_buy > 0:
                     await self.place_order(quantity_to_buy, OrderSide.BUY)
                     self.cash_available -= quantity_to_buy * close_price
                     self.current_position += quantity_to_buy
-                    logger.info(f"Bought {quantity_to_buy} shares of {self.symbol} at ${close_price}")
+                    self.logger.info(f"Bought {quantity_to_buy} shares of {self.symbol} at ${close_price}")
 
-        elif prediction == 2:  # Sell action
+        elif prediction == 2:
             if self.current_position > 0:
                 await self.place_order(self.current_position, OrderSide.SELL)
                 self.cash_available += self.current_position * close_price
-                logger.info(f"Sold {self.current_position} shares of {self.symbol} at ${close_price}")
-                self.current_position = 0.0  # Reset position to zero
+                self.logger.info(f"Sold {self.current_position} shares of {self.symbol} at ${close_price}")
+                self.current_position = 0.0
 
     async def place_order(self, quantity, side):
-        """Place an order through Alpaca, allowing fractional quantities."""
         order = MarketOrderRequest(
             symbol=self.symbol,
-            qty=quantity,  # Allows fractional quantities
+            qty=quantity,
             side=side,
             time_in_force=TimeInForce.DAY
         )
@@ -153,4 +138,4 @@ class SymbolProcessor:
     def save_to_csv(self):
         df = pd.DataFrame(self.aggregated_data)
         df.to_csv(f"{self.symbol}_5_minute_lookahead_data.csv", index=False)
-        logger.info(f"Data for {self.symbol} saved to '{self.symbol}_5_minute_lookahead_data.csv'.")
+        self.logger.info(f"Data for {self.symbol} saved to '{self.symbol}_5_minute_lookahead_data.csv'.")
