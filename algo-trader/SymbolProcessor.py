@@ -97,11 +97,11 @@ class SymbolProcessor:
                 rolling_window_df = pd.DataFrame(list(self.rolling_window))
                 # Calculate technical indicators
                 if len(self.rolling_window) == self.buffer_size:
-                    rolling_window_df["bb"] = calculate_bollinger_bands(rolling_window_df["close"], window=2)
-                    rolling_window_df["rsi"] = calculate_rsi(rolling_window_df["close"], window=2)
-                    rolling_window_df["sma"] = calculate_sma(rolling_window_df["close"], window=2)
-                    rolling_window_df["ema"] = calculate_ema(rolling_window_df["close"], window=2)
-                    macd_df = calculate_macd(rolling_window_df["close"], short_window=1, long_window=3, signal_window=2)
+                    rolling_window_df["bb"] = calculate_bollinger_bands(rolling_window_df["close"])
+                    rolling_window_df["rsi"] = calculate_rsi(rolling_window_df["close"])
+                    rolling_window_df["sma"] = calculate_sma(rolling_window_df["close"])
+                    rolling_window_df["ema"] = calculate_ema(rolling_window_df["close"])
+                    macd_df = calculate_macd(rolling_window_df["close"])
                     rolling_window_df = pd.concat([rolling_window_df, macd_df], axis=1)
 
                     # Extract the last row as feature input for classifier
