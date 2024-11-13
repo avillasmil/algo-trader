@@ -7,6 +7,14 @@ from datetime import datetime, timedelta
 from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import MarketOrderRequest
 from alpaca.trading.enums import OrderSide, TimeInForce
+from preprocess import (
+    calculate_bollinger_bands,
+    calculate_sma,
+    calculate_ema,
+    calculate_rsi,
+    calculate_obv,
+    calculate_macd
+)
 
 class SymbolProcessor:
     def __init__(self, symbol, model_name, alpaca_client, allocation_percentage, starting_cash, logger, buffer_size=26):
