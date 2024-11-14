@@ -61,13 +61,14 @@ async def run_stream():
         while True:
             if within_trading_hours():
                 logger.info("Market is open. Starting data stream and trading.")
-                await asyncio.gather(
-                    wss_client._run_forever(),
-                    monitor_user_input()           # Function to stop streaming upon user input
-                )
+                await wss_client.run()  # Start the WebSocket connection
+                await wait_until_market_close()     # Wait until market close
+                await wss_client.stop()             # Stop the WebSocket at market close
+                logger.info("Market closed. Stopping data stream.")
             else:
-                logger.info("Market is closed. Waiting for trading hours.")
-                await asyncio.sleep(60)  # Check again in 1 minute
+                time_to_open = time_until_market_open()
+                logger.info(f"Market is closed. Waiting {time_to_open // 3600} hours and {(time_to_open % 3600) // 60} minutes until next open.")
+                await asyncio.sleep(time_to_open)  # Sleep until the next market open
     except asyncio.CancelledError:
         logger.info("Streaming stopped by user.")
         # Save aggregated data to CSV files for each symbol
@@ -75,6 +76,18 @@ async def run_stream():
             processor.save_to_csv()
     except Exception as e:
         logger.error(f"Error in streaming loop: {e}")
+
+def time_until_market_open():
+    """Calculate the seconds until the next market open."""
+    now = datetime.now(EASTERN_TZ)
+    if now.time() >= TRADING_END:  # Market already closed today, wait until next day
+        next_open = datetime.combine(now.date() + timedelta(days=1), TRADING_START, tzinfo=EASTERN_TZ)
+    elif now.time() < TRADING_START:  # Before market open today
+        next_open = datetime.combine(now.date(), TRADING_START, tzinfo=EASTERN_TZ)
+    else:
+        return 0  # Market is open; no waiting needed
+    return (next_open - now).total_seconds()
+
 
 # Helper function to monitor user input to stop the WebSocket
 async def monitor_user_input():
