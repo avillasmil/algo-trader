@@ -62,8 +62,8 @@ async def run_stream():
             if within_trading_hours():
                 logger.info("Market is open. Starting data stream and trading.")
                 await asyncio.gather(
-                    wss_client._run_forever(),
-                    monitor_user_input()  # Function to stop streaming upon user input
+                    wss_client.start_streaming(),  # Use public method if available
+                    monitor_user_input()           # Function to stop streaming upon user input
                 )
             else:
                 logger.info("Market is closed. Waiting for trading hours.")
@@ -73,6 +73,8 @@ async def run_stream():
         # Save aggregated data to CSV files for each symbol
         for processor in symbol_processors.values():
             processor.save_to_csv()
+    except Exception as e:
+        logger.error(f"Error in streaming loop: {e}")
 
 # Helper function to monitor user input to stop the WebSocket
 async def monitor_user_input():
