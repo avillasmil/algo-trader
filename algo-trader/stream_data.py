@@ -62,7 +62,7 @@ async def run_stream():
             if within_trading_hours():
                 logger.info("Market is open. Starting data stream and trading.")
                 await asyncio.gather(
-                    wss_client.start_streaming(),  # Use public method if available
+                    wss_client._run_forever(),
                     monitor_user_input()           # Function to stop streaming upon user input
                 )
             else:
