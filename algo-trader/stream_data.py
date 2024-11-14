@@ -88,6 +88,14 @@ def time_until_market_open():
         return 0  # Market is open; no waiting needed
     return (next_open - now).total_seconds()
 
+async def wait_until_market_close():
+    """Pause until the market closes at 4:00 PM ET."""
+    now = datetime.now(EASTERN_TZ)
+    market_close = datetime.combine(now.date(), TRADING_END, tzinfo=EASTERN_TZ)
+    time_to_close = (market_close - now).total_seconds()
+    if time_to_close > 0:
+        await asyncio.sleep(time_to_close)
+
 
 # Helper function to monitor user input to stop the WebSocket
 async def monitor_user_input():
