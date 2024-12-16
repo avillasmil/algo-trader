@@ -26,7 +26,6 @@ class SymbolProcessor:
         self.interval_data = []
         self.rolling_window = deque(maxlen=buffer_size)
         self.obv_value = 0
-        self.aggregated_data = []
         self.alpaca_client = alpaca_client
 
         # Initialize cash and position allocation
@@ -85,7 +84,6 @@ class SymbolProcessor:
 
                 new_row["obv"] = self.obv_value
                 self.rolling_window.append(new_row)
-                self.aggregated_data.append(new_row)
 
                 rolling_window_df = pd.DataFrame(list(self.rolling_window))
                 if len(self.rolling_window) == self.buffer_size:
@@ -135,7 +133,3 @@ class SymbolProcessor:
         )
         self.alpaca_client.submit_order(order)
 
-    def save_to_csv(self):
-        df = pd.DataFrame(self.aggregated_data)
-        df.to_csv(f"{self.symbol}_5_minute_lookahead_data.csv", index=False)
-        self.logger.info(f"Data for {self.symbol} saved to '{self.symbol}_5_minute_lookahead_data.csv'.")
